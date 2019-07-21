@@ -1,0 +1,18 @@
+{
+  "name": "ledcube",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js & http-server ./",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "http-server": "^0.11.1",
+    "serialport": "^7.1.5",
+    "static-https-server": "^1.0.1",
+    "websocket": "^1.0.29"
+  }
+}

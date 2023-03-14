@@ -1,18 +1,31 @@
 <html>
-<head>
+<body>
+<div id="content"></div>
+<div id="status"></div>
+<label for="refreshInterval">Refresh interval</label>
+<input type="text" id="refreshInterval"/>
+<button id="startstop">Start/Stop</button>
+<select id="audio-sources"></select>
+</body>
 <script>
+document.body.onmousemove = event => lastEvent = event;
 
 
 // Setup some global variables
-connection = null // WS connection
-interval = 35 // Frame refresh interval in MS
-running = false // Data transmission running 
-start = 0 // Timestamp of frame refresh star
-frame=Array.from({length:8}).map(array => Array.from({length:8},x=>0)) // 8x8x8 Buffer for frame data
-audioCtx = null // WebAudio CTX reference
-analyser = null // FFT reference
-dataArray = null // Byte buffer to be sent to the host
-fftSize = 1024
+var audioSource = document.getElementById('audio-sources');
+var intervalInput = document.getElementById("refreshInterval");
+var startBtn = document.getElementById("startstop");
+var cubeMatrix = Array.from({length: 8},(item) => item = Array.from({length: 8},(item) => item = Array.from({length: 8},() => 0))) // 8x8x8 Matrix to store cube state
+var storedFrames = Array.from({length:7}) // Store 7 vertical slices of previous 2D FFT data
+var connection = null // WS connection
+var interval = 35 // Frame refresh interval in MS
+var running = false // Data transmission running 
+var start = 0 // Timestamp of frame refresh star
+var frame=Array.from({length:8}).map(array => Array.from({length:8},x=>0)) // 8x8 Byte Buffer for frame data
+var audioCtx = null // WebAudio CTX reference
+var analyser = null // FFT reference
+var dataArray = null // Byte buffer to be sent to the host
+var fftSize = 1024
 
 
 //Callback for audio device enumeration
@@ -22,7 +35,6 @@ function gotDevices(deviceInfos) {
   analyser = audioCtx.createAnalyser();
   analyser.fftsize = fftSize;
   dataArray = new Uint8Array(analyser.frequencyBinCount);
-  // Handles being called several times to update labels. Preserve values.
 
   for (let i = 0; i !== deviceInfos.length; ++i) {
     console.log(deviceInfos[i])
@@ -37,6 +49,7 @@ function gotDevices(deviceInfos) {
   }
 }
 
+// Media source selection callback
 function gotMedia(stream) {
   analyser.smoothingTimeConstant = 0.3;
 
@@ -52,7 +65,7 @@ function gotMedia(stream) {
   window.requestAnimationFrame(step)
 }
 
-
+// Frame request callback
 function step(timestamp) {
     if (!start) start = timestamp;
 
@@ -62,9 +75,6 @@ function step(timestamp) {
     running && setTimeout(() => window.requestAnimationFrame(step),interval);
 
 }
-
-var intervalInput = document.getElementById("refreshInterval");
-var startBtn = document.getElementById("startstop");
 
 // if user is running mozilla then use it's built-in WebSocket
 window.WebSocket = window.WebSocket || window.MozWebSocket;
@@ -99,12 +109,10 @@ connection.onerror = function (error) {
   console.error("Sorry, but there\'s some problem with your connection or the server is down.");
 };
 
-
+// Send a 8x8x8 frame to the host
 function sendFrame(frameData) {
   connection.send(Uint8Array.from([0xF2, ...frameData]))
 }
-
-var cubeMatrix = Array.from({length: 8},(item) => item = Array.from({length: 8},(item) => item = Array.from({length: 8},() => 0)))
 
 const projectCanvas = (canvas, cubeMatrix) => {
   for(i=0; i<28; i++){
@@ -122,6 +130,7 @@ const projectCanvas = (canvas, cubeMatrix) => {
 
 const bitArrayToByte = bitArray => bitArray.reduce((acc,bit,index)=>acc & bit?2**index:0,0)
 
+// Reduce 8x8x8 bool matrix to 8x8 Byte matrix
 const cubeMatrixToFrame = matrix => {
     for(y=0;y<8;y++) {
       for(z=0;z<8;z++){
@@ -129,8 +138,6 @@ const cubeMatrixToFrame = matrix => {
       }
     }
 }
-
-var storedFrames = Array.from({length:7})
 
 const getYLayer = (bitMatrix, layerNum) => {
   const layerData = Array.from({length: 8},(item) => item = Array.from({length: 8},() =>0))
@@ -207,18 +214,6 @@ var renderAnalyserFrame = () => {
   cubeMatrixToFrame(cubeMatrix)
 }
 
-</script>
-</head>
-<body>
-<div id="content"></div>
-<div id="status"></div>
-<label for="refreshInterval">Refresh interval</label>
-<input type="text" id="refreshInterval"/>
-<button id="startstop">Start/Stop</button>
-<select id="audio-sources"></select>
-</body>
-<script>document.body.onmousemove = event => lastEvent = event;
-var audioSource = document.getElementById('audio-sources');
 
 
 function setAudioDevice() {

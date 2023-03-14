@@ -1,4 +1,5 @@
 # 8x8x8-led-cube-websocket
+<img width="649" alt="Screenshot 2023-03-14 124939" src="https://user-images.githubusercontent.com/15047501/225006002-2608e5da-5cc4-4992-9f50-d5551537b49a.png">
 A little POC for controlling 8x8x8 Led cube with javascript over web sockets.
 
 To run:

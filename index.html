@@ -6,269 +6,103 @@
   crossorigin="anonymous"></script>
 <script src="./adapter-latest.js"></script>
 <script>
-connection = null;
-frame = null
-interval = 300
-running = false
-start = 0
-frame=Array.from({length:8}).map(array => Array.from({length:8},x=>0))
-//var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-/*
-window.AudioContext = window.webkitAudioContext || window.AudioContext;
-    audioCtx = new AudioContext();
-    analyser = audioCtx.createAnalyser();
-    var bufferLength = analyser.frequencyBinCount;
 
-    for (var channel = 0; channel < myArrayBuffer.numberOfChannels; channel++) {
-      // This gives us the actual array that contains the data
-      var nowBuffering = myArrayBuffer.getChannelData(channel);
-      for (var i = 0; i < myArrayBuffer.length; i++) {
-        // Math.random() is in [0; 1.0]
-        // audio needs to be in [-1.0; 1.0]
-        nowBuffering[i] = Math.random() * 2 - 1;
-      }
-    }
 
-    // Get an AudioBufferSourceNode.
-    // This is the AudioNode to use when we want to play an AudioBuffer
-    var source = audioCtx.createBufferSource();
+// Setup some global variables
+connection = null // WS connection
+interval = 35 // Frame refresh interval in MS
+running = false // Data transmission running 
+start = 0 // Timestamp of frame refresh star
+frame=Array.from({length:8}).map(array => Array.from({length:8},x=>0)) // 8x8x8 Buffer for frame data
+audioCtx = null // WebAudio CTX reference
+analyser = null // FFT reference
+dataArray = null // Byte buffer to be sent to the host
+fftSize = 1024
 
-    // set the buffer in the AudioBufferSourceNode
-    source.buffer = myArrayBuffer;
 
-    // connect the AudioBufferSourceNode to the
-    // destination so we can hear the sound
-    analyser.fftsize = 8;
-    analyser.smoothingTimeConstant = 0.9;
-    source.connect(analyser);
-    //analyser.connect(audioCtx.destination);
-    source.start();
-    var myArrayBuffer = audioCtx.createBuffer(2, audioCtx.sampleRate * 3, audioCtx.sampleRate);
-    //navigator.getMedia = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia);
-    navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: false
-    }, function (localMediaStream) {
-        source = context.createMediaStreamSource(localMediaStream);
-        console.log(source);
-        source.connect(analyser);
-        draw();
-    }, function (err) {
-        console.log(err);
-    });
-*/
-
-// Create an empty three-second stereo buffer at the sample rate of the AudioContext
-//var myArrayBuffer = audioCtx.createBuffer(2, audioCtx.sampleRate * 3, audioCtx.sampleRate);
-/*
+//Callback for audio device enumeration
 function gotDevices(deviceInfos) {
+  audioCtx =  new (window.AudioContext || window.webkitAudioContext)();
+
+  analyser = audioCtx.createAnalyser();
+  analyser.fftsize = fftSize;
+  dataArray = new Uint8Array(analyser.frequencyBinCount);
   // Handles being called several times to update labels. Preserve values.
-  const values = selectors.map(select => select.value);
-  selectors.forEach(select => {
-    while (select.firstChild) {
-      select.removeChild(select.firstChild);
-    }
-  });
+
   for (let i = 0; i !== deviceInfos.length; ++i) {
     console.log(deviceInfos[i])
     const deviceInfo = deviceInfos[i];
-    const option = document.createElement('option');
-    option.value = deviceInfo.deviceId;
-    if (deviceInfo.kind === 'audioinput') {
-      option.text = deviceInfo.label || `microphone ${audioInputSelect.length + 1}`;
+    if (deviceInfo.kind === 'audiooutput') {
+      const audioInputSelect = document.getElementById('audio-sources')
+      let option = document.createElement('option')
+      option.value = deviceInfo.deviceId;
+      option.text = deviceInfo.label || `speaker ${i}`;
       audioInputSelect.appendChild(option);
-    } else if (deviceInfo.kind === 'audiooutput') {
-      option.text = deviceInfo.label || `speaker ${audioOutputSelect.length + 1}`;
-      audioOutputSelect.appendChild(option);
-    } else if (deviceInfo.kind === 'videoinput') {
-      option.text = deviceInfo.label || `camera ${videoSelect.length + 1}`;
-      videoSelect.appendChild(option);
-    } else {
-      console.log('Some other kind of source/device: ', deviceInfo);
     }
   }
-  selectors.forEach((select, selectorIndex) => {
-    if (Array.prototype.slice.call(select.childNodes).some(n => n.value === values[selectorIndex])) {
-      select.value = values[selectorIndex];
-    }
-  });
 }
-*/
-//navigator.mediaDevices.enumerateDevices().then(gotDevices).catch(handleError);
-// Fill the buffer with white noise;
-// just random values between -1.0 and 1.0
-//for (var channel = 0; channel < myArrayBuffer.numberOfChannels; channel++) {
-  // This gives us the actual array that contains the data
-  //var nowBuffering = myArrayBuffer.getChannelData(channel);
-  //for (var i = 0; i < myArrayBuffer.length; i++) {
-    // Math.random() is in [0; 1.0]
-    // audio needs to be in [-1.0; 1.0]
-   // nowBuffering[i] = Math.random() * 2 - 1;
-  //}
-//}
 
-// Get an AudioBufferSourceNode.
-// This is the AudioNode to use when we want to play an AudioBuffer
-//var source = audioCtx.createBufferSource();
+function gotMedia(stream) {
+  analyser.smoothingTimeConstant = 0.3;
 
-// set the buffer in the AudioBufferSourceNode
-//source.buffer = myArrayBuffer;
+  // Get an AudioBufferSourceNode.
+  // This is the AudioNode to use when we want to play an AudioBuffer
+  var source = audioCtx.createMediaStreamSource(stream);
 
-// connect the AudioBufferSourceNode to the
-// destination so we can hear the sound
-//source.connect(audioCtx.destination);
-
-// start the source playing
-//source.start();
-var frameNum = 0;
-    function step(timestamp) {
-      if (!start) start = timestamp;
-      var progress = timestamp - start;
-      //if (progress % 5000 < 1000) {
-        frame=Array.from({length:8}).map(array => Array.from({length:8},x=>0))
-        renderFrame();
-        sendFrame(frame.flat(1))
-        frameNum++
-      //}
-        //console.log('requesting frame')
-         running && setTimeout(() => window.requestAnimationFrame(step),interval);
-
-    }
+  // set the buffer in the AudioBufferSourceNode
+  // connect the AudioBufferSourceNode to the
+  // destination so we can hear the sound
+  source.connect(analyser);
+  //analyser.connect(audioCtx.destination)
+  window.requestAnimationFrame(step)
+}
 
 
-$(function () {
-  "use strict";
-  // for better performance - to avoid searching in DOM
-  var content = $('#content');
-  var input = $('#input');
-  var status = $('#status');
-  var intervalInput = $('#refreshInterval');
-  var startBtn = $('#startstop');
-  // my color assigned by the server
-  var myColor = false;
-  // my name sent to the server
-  var myName = false;
-  // if user is running mozilla then use it's built-in WebSocket
-  window.WebSocket = window.WebSocket || window.MozWebSocket;
-  // if browser doesn't support WebSocket, just show
-  // some notification and exit
-  if (!window.WebSocket) {
-    content.html($('<p>',
-      { text:'Sorry, but your browser doesn\'t support WebSocket.'}
-    ));
-    input.hide();
-    $('span').hide();
-    return;
-  }
+function step(timestamp) {
+    if (!start) start = timestamp;
 
-  startBtn.click(e => {
-	running = !running
-	if(running){
-	   interval = intervalInput.val()
-	   window.requestAnimationFrame(step)
-        }
-  })
-// open connection
-  connection = new WebSocket('ws://192.168.1.176:1337');
-  connection.onopen = function () {
-    // first we want users to enter their names
-    input.removeAttr('disabled');
-    status.text('Choose name:');
+    frame=Array.from({length:8}).map(array => Array.from({length:8},x=>0))
+    renderAnalyserFrame()
+    sendFrame(frame.flat(1))
+    running && setTimeout(() => window.requestAnimationFrame(step),interval);
 
+}
+
+var intervalInput = document.getElementById("refreshInterval");
+var startBtn = document.getElementById("startstop");
+
+// if user is running mozilla then use it's built-in WebSocket
+window.WebSocket = window.WebSocket || window.MozWebSocket;
+// if browser doesn't support WebSocket, just show
+// some notification and exit
+if (!window.WebSocket) {
+  console.error("Sorry, but your browser doesn't support WebSocket.");
+  return;
+}
+
+startBtn.onClick = e => {
+  running = !running
+  if(running){
+    interval = intervalInput.val()
     window.requestAnimationFrame(step)
-
-  };
-  connection.onerror = function (error) {
-    // just in there were some problems with connection...
-    content.html($('<p>', {
-      text: 'Sorry, but there\'s some problem with your '
-         + 'connection or the server is down.'
-    }));
-  };
-  // most important part - incoming messages
-  connection.onmessage = function (message) {
-   // console.log(myArrayBuffer.getChannelData(0));
-  //  var array = new Uint8Array(analyser.frequencyBinCount);
-   // analyser.getByteFrequencyData(array);
-   // console.log(array);
- // try to parse JSON message. Because we know that the server
-    // always returns JSON this should work without any problem but
-    // we should make sure that the massage is not chunked or
-    // otherwise damaged.
-    try {
-      var json = JSON.parse(message.data);
-    } catch (e) {
-      console.log('Invalid JSON: ', message.data);
-      return;
-    }
-    // NOTE: if you're not sure about the JSON structure
-    // check the server source code above
-    // first response from the server with user's color
-    if (json.type === 'color') {
-      myColor = json.data;
-      status.text(myName + ': ').css('color', myColor);
-      input.removeAttr('disabled').focus();
-      // from now user can start sending messages
-    } else if (json.type === 'history') { // entire message history
-      // insert every single message to the chat window
-/*      for (var i=0; i < json.data.length; i++) {
-      addMessage(json.data[i].author, json.data[i].text,
-          json.data[i].color, new Date(json.data[i].time));
-      }*/
-    } else if (json.type === 'message') { // it's a single message
-      // let the user write another message
-      input.removeAttr('disabled');
-      /*addMessage(json.data.author, json.data.text,
-                 json.data.color, new Date(json.data.time));*/
-    } else {
-      console.log('Hmm..., I\'ve never seen JSON like this:', json);
-    }
-  };
-  /**
-   * Send message when user presses Enter key
-   */
-  input.keydown(function(e) {
-    if (e.keyCode === 13) {
-      var msg = $(this).val();
-      if (!msg) {
-        return;
-      }
-      // send the message as an ordinary text
-      connection.send(msg);
-      $(this).val('');
-      // disable the input field to make the user wait until server
-      // sends back response
-      input.attr('disabled', 'disabled');
-      // we know that the first message sent from a user their name
-      if (myName === false) {
-        myName = msg;
-      }
-    }
-  });
-  /**
-   * This method is optional. If the server wasn't able to
-   * respond to the in 3 seconds then show some error message
-   * to notify the user that something is wrong.
-   */
-  setInterval(function() {
-    if (connection.readyState !== 1) {
-      status.text('Error');
-      input.attr('disabled', 'disabled').val(
-          'Unable to communicate with the WebSocket server.');
-    }
-  }, 3000);
-  /**
-   * Add message to the chat window
-   */
-  function addMessage(author, message, color, dt) {
-    content.prepend('<p><span style="color:' + color + '">'
-        + author + '</span> @ ' + (dt.getHours() < 10 ? '0'
-        + dt.getHours() : dt.getHours()) + ':'
-        + (dt.getMinutes() < 10
-          ? '0' + dt.getMinutes() : dt.getMinutes())
-        + ': ' + message + '</p>');
   }
-})
+}
+
+// open connection
+connection = new WebSocket('wss://192.168.1.176:8443');
+connection.onopen = function () {
+  // first we want users to enter their names
+  input.removeAttr('disabled');
+  status.text('Choose name:');
+  running = true
+  interval = 32
+
+};
+
+connection.onerror = function (error) {
+  // just in there were some problems with connection...
+  console.error("Sorry, but there\'s some problem with your connection or the server is down.");
+};
 
 
 function sendFrame(frameData) {
@@ -276,51 +110,6 @@ function sendFrame(frameData) {
 }
 
 var cubeMatrix = Array.from({length: 8},(item) => item = Array.from({length: 8},(item) => item = Array.from({length: 8},() => 0)))
-const numbers = [[
-  [1,1,1,1,1],
-  [1,0,0,0,1],
-  [1,1,1,1,1]
-],[
-  [0,0,0,0,0],
-  [1,1,1,1,1],
-  [0,0,0,0,0]
-],[
-  [1,0,1,1,1],
-  [1,0,1,0,1],
-  [1,1,1,0,1]
-],[
-  [1,0,1,0,1],
-  [1,0,1,0,1],
-  [1,1,1,1,1]
-],[
-  [1,1,1,0,0],
-  [0,0,1,0,0],
-  [1,1,1,1,1]
-],[
-  [1,1,1,0,1],
-  [1,0,1,0,1],
-  [1,0,1,1,1]
-],[
-  [1,1,1,1,1],
-  [1,0,1,0,1],
-  [1,0,1,1,1]
-],[
-  [1,0,0,1,1],
-  [1,0,1,0,0],
-  [1,1,0,0,0]
-],[
-  [1,1,1,1,1],
-  [1,0,1,0,1],
-  [1,1,1,1,1]
-],[
-  [1,1,1,0,1],
-  [1,0,1,0,1],
-  [1,1,1,1,1]
-]]
-
-const plotNumber = (canvas, number, space=true) => {
-  space?canvas.push(...[...numbers[number], Array.from({length:5}, () => 0)]):canvas.push(...numbers[number])
-}
 
 const projectCanvas = (canvas, cubeMatrix) => {
   for(i=0; i<28; i++){
@@ -345,104 +134,112 @@ const cubeMatrixToFrame = matrix => {
       }
     }
 }
-var flag = false
-var flag2 = false
-var renderFrame = () => {
-// Coordinate order: Y Z X
-/*
 
-<X___________________
-                  / |
-                /   |
-              /     |
-            /       |
-          Z         |Y
-                    V
-*/
-/*  let posx = event.screenX;
-  let posy = event.screenY;
-  let width = event.clientX;
-  let height = event.clientY;
+var storedFrames = Array.from({length:7})
 
-  let scaledX = parseInt(width/posx*8);
-  let scaledY = parseInt((height/posy)*8);
-
-  const z = 3;*/
-  /* const output = [];
-
-  for(let y=0; y<8; y++){
-   for(let x=0; x<8; x++) {
-    for(let z=0;z<8;z++){
-    	output[y*8+x] |= frame[y][x][z]? z**2 : 0
-    }
-   }
-  }
-return output;*/
-const canvas = []
-const now = new Date()
-const hours = now.getHours().toString().padStart(2, '0')
-const seconds = now.getSeconds().toString().padStart(2, '0')
-const minutes = now.getMinutes().toString().padStart(2, '0')
-const millis = now.getMilliseconds()
-const timestring = hours + minutes + seconds
-
-cubeMatrix = Array.from({length: 8},(item) => item = Array.from({length: 8},(item) => item = Array.from({length: 8},() => 0)))
-
-timestring.split('').map((number, index) => plotNumber(canvas,parseInt(number),index%2===0))
-//console.log(timestring)
-
-
-  if(millis > 500) {
-    flag2 = false
-    y = parseInt(((millis-500)/500)*8)
-    width = parseInt((((millis-500)/500)*2.2)+0.8)
-    breadth = parseInt((((millis-500)/500)*2.2)+0.8)
-    for(x=4-width; x<4+width; x++){
-      for(z=4-breadth; z<4+breadth; z++){
-        cubeMatrix[x][flag?y:7-y][z] = z===4-breadth || z===3+breadth || x===4-width || x===3+width?1:0
-      }
-    }
-  } else {
-    if(!flag2){
-      flag = !flag
-      flag2 = true
-    }
-    width = parseInt(((1-(millis/500))*2))+1
-    breadth = parseInt(((1-(millis/500))*2))+1
-    for(x=4-width; x<4+width; x++){
-      for(z=4-breadth; z<4+breadth; z++){
-        progress = parseInt((1-(millis/500))*8)
-        cubeMatrix[x][flag?0:7][z] = ((z===4-breadth || z===3+breadth || x===4-width || x===3+width)&&((x<progress||z<progress)))?1:0
-      }
+const getYLayer = (bitMatrix, layerNum) => {
+  const layerData = Array.from({length: 8},(item) => item = Array.from({length: 8},() =>0))
+  for(let x =0; x<8; x++){
+    for(let y =0; y<8; y++){
+      layerData[x][y] = bitMatrix[x][y][layerNum]
     }
   }
-projectCanvas(canvas, cubeMatrix)
-
-cubeMatrixToFrame(cubeMatrix)
-
-
-
+  return layerData
 }
 
-/*let lastEvent = null
-let frame = [8][8][8]
+var renderAnalyserFrame = () => {
+  cubeMatrix = Array.from({length: 8},(item) => item = Array.from({length: 8},(item) => item = Array.from({length: 8},() => 0)))
+  analyser.getByteFrequencyData(dataArray);
+  //console.log(bufferLength)
+  const width = 8
+  const height = 8
+  const depth = 8
 
-for(i=0;i<512;i++){
-  frame[parseInt(i/64)][parseInt(i/8)][i%8]=0
-}*/
+  for(var i = 0; i < width; i++) {
+      for(var j = 0; j < height; j++) {
+        for(var k = 0; k < depth -1; k++) {
+          if(storedFrames[k]) {
+            cubeMatrix[i][j][k] = storedFrames[k][i][j]
+          }
+        }
+      }
+    }
 
+  for(var i = 0; i < width; i++) {
+
+        var v = 0
+        const prevFreq = i > 0 ? 2 ** i-1 * 55 : 0
+        const freq = 2 ** i * 55
+        const index = parseInt(fftSize * (freq/22000))
+        const prevIndex = parseInt(fftSize * (prevFreq/22000))
+        //const stepWidth = parseInt(bufferLength/width)
+        /*for(var k = 0; k < stepWidth; k++) {
+          v = v + (dataArray[(i*stepWidth)+k] / 256.0)
+        }
+        v = v / stepWidth*/
+        const weight = freq < 200 ? ((2 ** (7-i) / (2 ** width)) * 0.7) + 1 : 1
+        var max = 0
+        /*if(freq <150){
+          for(let a = prevIndex; a < index; a++) {
+            sum = sum + (dataArray[a] / 256.0)
+          }
+          v = sum / (index - prevIndex)
+        } else {*/
+        if(freq > 110) {
+          v = dataArray[index] / 256.0
+          //console.log(index)
+        } else {
+          //console.log(index)
+          for(let a = 0; a < index; a++) {
+            max = Math.max(dataArray[a] / 256.0, max)
+          }
+          v = max
+        }
+        //}
+
+        var y = Math.min(parseInt(v * (height-1)*weight), 7);
+
+        let u = 0
+        while(u <= y) {
+          cubeMatrix[i][u][7] = 1
+          u++
+        }
+  }
+
+  storedFrames.push(getYLayer(cubeMatrix,7))
+  storedFrames.shift()
+
+  cubeMatrixToFrame(cubeMatrix)
+}
 
 </script>
 </head>
 <body>
 <div id="content"></div>
 <div id="status"></div>
-<input type="text" id="input"/>
+<label for="refreshInterval">Refresh interval</label>
 <input type="text" id="refreshInterval"/>
 <button id="startstop">Start/Stop</button>
+<select id="audio-sources"></select>
 </body>
 <script>document.body.onmousemove = event => lastEvent = event;
-//setInterval(() => lastEvent && sendFrame(renderFrame(frame, lastEvent)),80)
-//setTimeout(sendFrame(renderFrame(null)),1000)
+var audioSource = document.getElementById('audio-sources');
+
+
+function setAudioDevice() {
+  if (window.stream) {
+    window.stream.getTracks().forEach(track => {
+      track.stop();
+    });
+  }
+  const audioSourceId = audioSource.value;
+  const constraints = {
+    audio: {deviceId: audioSourceId ? {exact: audioSourceId} : undefined},
+  };
+  navigator.mediaDevices.getUserMedia(constraints).then(gotMedia).catch(e=>console.error(e));
+}
+
+audioSource.onchange = setAudioDevice;
+navigator.mediaDevices.enumerateDevices().then(gotDevices).catch(e=>console.error(e));
 </script>
 </html>
